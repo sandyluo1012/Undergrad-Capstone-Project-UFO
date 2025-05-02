@@ -1,0 +1,152 @@
+---
+title: "140XP Final Project"
+author: "Wenqian Luo"
+date: "2023-03-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r}
+nuforc_reports <- read.csv("nuforc_reports.csv")
+
+library(dplyr)
+library(tidyverse)
+
+
+nuforc_reports[nuforc_reports == ""] <- NA # treat empty as NA
+
+clean_nuforc_reports <- nuforc_reports %>% drop_na() %>%
+  select(date_time, text, city_latitude, city_longitude, city, state)
+
+
+library(lubridate)
+
+clean_nuforc_reports$date_time <- ymd_hms(clean_nuforc_reports$date_time)
+
+clean_nuforc_reports$month <- month(clean_nuforc_reports$date_time)
+clean_nuforc_reports$day <- day(clean_nuforc_reports$date_time)
+clean_nuforc_reports$year <- year(clean_nuforc_reports$date_time)
+clean_nuforc_reports$hour <- hour(clean_nuforc_reports$date_time)
+
+
+#state_freq <- clean_nuforc_reports %>% group_by(state) %>% summarise(cnt = n()) %>% #arrange(desc(cnt))
+
+#barplot(height = state_freq$cnt, names.arg = state_freq$state)
+#ggplot(data=state_freq, aes(x=state, y=cnt, fill = state)) + geom_bar(stat="identity")
+
+#Very few sightings early on.
+#This one shows how ufo sightings have varies by year, especially with the invention of technology. May be better for our poster
+
+winter <- clean_nuforc_reports %>% filter((month==12) | (month==1) | (month==2))
+winter <- winter %>% group_by(year) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+spring <- clean_nuforc_reports %>% filter((month==3) | (month==4) | (month==5))
+spring <- spring %>% group_by(year) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+summer <- clean_nuforc_reports %>% filter((month==6) | (month==7) | (month==8))
+summer <- summer %>% group_by(year) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+fall <- clean_nuforc_reports %>% filter((month==9) | (month==10) | (month==11))
+fall <- fall %>% group_by(year) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+winter <- winter %>% cbind(Season = rep("Winter", 51))
+spring <- spring %>% cbind(Season = rep("Spring", 51))
+summer <- summer %>% cbind(Season = rep("Summer", 51))
+fall <- fall %>% cbind(Season = rep("Fall", 51))
+
+seasonal_years <- rbind(fall, winter, spring, summer)
+seasonal_years <- seasonal_years %>% arrange(year)
+
+proportions <- (seasonal_years %>% arrange(year) %>% group_by(year) %>% summarise(Prop = cnt/sum(cnt)))
+
+seasonal_years <- cbind(seasonal_years, proportions)[2:5]
+
+
+barplot(table(clean_nuforc_reports$year), col = "purple", xlab = "Year", ylab = "Number of Sightings", main = "Sightings Over Year")
+
+ggplot(data = seasonal_years, aes(x = year, y = Prop, color = Season)) + geom_line() + labs(x = "Year", y = "Proportion of Sightings for the Year")
+
+
+
+# Heatmap
+require(ggplot2)
+require(ggmap)
+require(RColorBrewer)
+
+coords <- clean_nuforc_reports[,c(4,3)]
+map_bounds <- c(left = -127, bottom = 23, right = -65, top = 50)
+coords_map <- get_stamenmap(bbox = map_bounds, zoom = 6, maptype = "toner")
+
+coords_map <- ggmap(coords_map, extent="device", legend="none")
+coords_map <- coords_map + stat_density2d(data=coords,  aes(x=city_longitude, y=city_latitude, fill=..level.., alpha=..level..), geom="polygon")
+coords_map <- coords_map + scale_fill_gradientn(colours=rev(brewer.pal(7, "Spectral")))
+#ggsave(filename="./coords.png", dpi = 1000)
+
+#Overlay military bases
+# Military base data obtained from: 
+# https://public.opendatasoft.com/explore/dataset/military-bases/table/
+
+require(readxl)
+
+military <- read_excel("military-bases.xlsx")[,1]
+military <- as.data.frame(military)[,1]
+military <- military %>% strsplit(., split = ", ")
+military <- data.frame(latitude = as.numeric(sapply(military, "[", 1)),
+                       longitude = as.numeric(sapply(military, "[", 2)))
+
+coords_map <- coords_map + geom_point(data=military,  aes(x=longitude, y=latitude), fill="red", shape=23, alpha=1, size = 0.3, stroke = 0.1)
+
+#ggsave saves heatmap to directory
+ggsave(filename="./heatmap.png", dpi = 1000)
+```
+
+
+``` {r}
+#This code doesn't matter for our seasonal/yearly poster
+
+
+winter_reports <- clean_nuforc_reports %>% filter((month==12) | (month==1) | (month==2))
+winter_reports <- winter_reports %>% group_by(city_longitude, city_latitude, city, state, year) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+spring_reports <- clean_nuforc_reports %>% filter((month==3) | (month==4) | (month==5))
+spring_reports <- spring_reports %>% group_by(city_longitude, city_latitude, city, state) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+summer_reports <- clean_nuforc_reports %>% filter((month==6) | (month==7) | (month==8))
+summer_reports <- summer_reports %>% group_by(city_longitude, city_latitude, city, state) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+fall_reports <- clean_nuforc_reports %>% filter((month==9) | (month==10) | (month==11))
+fall_reports <- fall_reports %>% group_by(city_longitude, city_latitude, city, state) %>% summarise(cnt = n()) %>% arrange(desc(cnt))
+
+winter_reports <- winter_reports %>% cbind(Season = rep("Winter", 10125))
+spring_reports <- spring_reports %>% cbind(Season = rep("Spring", 5219))
+summer_reports <- summer_reports %>% cbind(Season = rep("Summer", 6902))
+fall_reports <- fall_reports %>% cbind(Season = rep("Fall", 6476) )
+
+seasonal_reports <- rbind(fall_reports, winter_reports, spring_reports, summer_reports)
+seasonal_reports$Season <- as.factor(seasonal_reports$Season)
+seasonal_reports <- seasonal_reports %>% arrange(city, state)
+
+seasonal_reports
+deviations <- (seasonal_reports %>% group_by(City = city, State = state) %>% summarise(Deviation = cnt - mean(cnt)) %>% select(Deviation))
+
+plot_data <- (cbind(seasonal_reports, deviations) %>% select(city_longitude, city_latitude, city, state, cnt, Season, Deviation))
+
+ggplot(data = plot_data, aes(x = Season, y = Deviation)) + geom_boxplot()
+
+model <- aov(cnt~Season, data=plot_data)
+summary(model)
+
+model1 <- aov(Deviation~Season, data=plot_data)
+summary(model1)
+
+plot(TukeyHSD(model))
+plot(TukeyHSD(model1))
+
+total_obs_per_season <- seasonal_reports %>% group_by(Season) %>% summarise(Count = sum(cnt))
+barplot(height = total_obs_per_season$Count, names.arg = total_obs_per_season$Season, col = total_obs_per_season$Season)
+
+total_obs_per_season
+```
